@@ -1,200 +1,129 @@
 import {useState, useEffect} from 'react';
-import {BleManager, Device} from 'react-native-ble-plx';
+import BleManager from 'react-native-ble-manager';
 import {requestPermissions} from '../utils/permissions';
-import {Alert, Platform} from 'react-native';
-
-const bleManager = new BleManager();
-
-const hasValidName = (device: Device): boolean => {
-  return Boolean(device.name || device.localName);
-};
 
 export const useBleManager = (setError: (error: string | null) => void) => {
+  const peripherals = new Map();
   const [isScanning, setIsScanning] = useState(false);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
-  const [deviceConnectionStates, setDeviceConnectionStates] = useState<{
-    [key: string]: 'disconnected' | 'connecting' | 'connected' | 'pairing';
-  }>({});
-
-  // Check if device is connected
-  const checkDeviceConnection = async (device: Device) => {
-    try {
-      const isConnected = await device.isConnected();
-      setDeviceConnectionStates(prev => ({
-        ...prev,
-        [device.id]: isConnected ? 'connected' : 'disconnected',
-      }));
-      return isConnected;
-    } catch (error) {
-      return false;
-    }
-  };
-
-  const handlePairing = async (device: Device): Promise<boolean> => {
-    return new Promise(resolve => {
-      if (Platform.OS === 'ios') {
-        // iOS handles pairing automatically
-        resolve(true);
-      } else {
-        Alert.alert(
-          'Pair Device',
-          `Would you like to pair with ${
-            device.name || device.localName || 'Unknown Device'
-          }?`,
-          [
-            {
-              text: 'Cancel',
-              onPress: () => resolve(false),
-              style: 'cancel',
-            },
-            {
-              text: 'Pair',
-              onPress: () => resolve(true),
-            },
-          ],
-        );
-      }
-    });
-  };
-
-  const connectToDevice = async (device: Device) => {
-    try {
-      bleManager.stopDeviceScan();
-      setIsScanning(false);
-      setError(null);
-
-      // Check if already connected
-      const isConnected = await checkDeviceConnection(device);
-      if (isConnected) {
-        setConnectedDevice(device);
-        return;
-      }
-
-      // Show pairing prompt
-      setDeviceConnectionStates(prev => ({
-        ...prev,
-        [device.id]: 'pairing',
-      }));
-
-      const shouldPair = await handlePairing(device);
-      if (!shouldPair) {
-        setDeviceConnectionStates(prev => ({
-          ...prev,
-          [device.id]: 'disconnected',
-        }));
-        return;
-      }
-
-      // Connect to device
-      setDeviceConnectionStates(prev => ({
-        ...prev,
-        [device.id]: 'connecting',
-      }));
-
-      const connected = await bleManager.connectToDevice(device.id, {
-        autoConnect: true,
-      });
-      // const connected = await device.connect();
-      const discovered =
-        await connected.discoverAllServicesAndCharacteristics();
-      setDeviceConnectionStates(prev => ({
-        ...prev,
-        [device.id]: 'connected',
-      }));
-
-      setConnectedDevice(discovered);
-    } catch (error) {
-      setDeviceConnectionStates(prev => ({
-        ...prev,
-        [device.id]: 'disconnected',
-      }));
-      setError(
-        `Connection error: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  };
+  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   useEffect(() => {
+    BleManager.enableBluetooth().then(() => {
+      console.log('Bluetooth is turned on!');
+    });
+
+    BleManager.start({showAlert: false}).then(() => {
+      console.log('BleManager initialized');
+    });
+
+    let stopDiscoverListener = BleManager.onDiscoverPeripheral(
+      (peripheral: any) => {
+        if (peripheral.name) {
+          peripherals.set(peripheral.id, peripheral);
+          setDiscoveredDevices([...peripherals.values()]);
+          console.log('onDiscoverPeripheral:', [...peripherals.values()]);
+        }
+      },
+    );
+    let stopConnectListener = BleManager.onConnectPeripheral(
+      (peripheral: any) => {
+        console.log('BleManagerConnectPeripheral:', peripheral);
+      },
+    );
+    let stopScanListener = BleManager.onStopScan(() => {
+      setIsScanning(false);
+      console.log('scan stopped');
+    });
+
+    requestPermissions();
+
     return () => {
-      bleManager.destroy();
+      stopDiscoverListener.remove();
+      stopConnectListener.remove();
+      stopScanListener.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startScan = async () => {
-    try {
-      setError(null);
-      const hasPermissions = await requestPermissions();
-      if (!hasPermissions) {
-        setError('Bluetooth permissions not granted');
-        return;
-      }
-
-      setIsScanning(true);
-      setDevices([]);
-
-      bleManager.startDeviceScan(
-        null,
-        {allowDuplicates: false},
-        (error, scannedDevice) => {
-          if (error) {
-            setError(`Scan error: ${error.message}`);
-            setIsScanning(false);
-            return;
-          }
-
-          if (scannedDevice && hasValidName(scannedDevice)) {
-            setDevices(prevDevices => {
-              if (!prevDevices.find(d => d.id === scannedDevice.id)) {
-                return [...prevDevices, scannedDevice];
-              }
-              return prevDevices;
-            });
-          }
-        },
-      );
-
-      setTimeout(() => {
-        bleManager.stopDeviceScan();
-        setIsScanning(false);
-      }, 15000);
-    } catch (error) {
-      setError(
-        `Unexpected error: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      setIsScanning(false);
+    if (!isScanning) {
+      await BleManager.scan([], 5, true)
+        .then(() => {
+          console.log('Scanning...');
+          setIsScanning(true);
+          setDiscoveredDevices([]);
+        })
+        .catch(error => {
+          console.error(error);
+          setError(error);
+        });
     }
   };
 
-  const disconnectDevice = async () => {
-    if (connectedDevice) {
-      try {
-        setError(null);
-        await connectedDevice.cancelConnection();
-        setDeviceConnectionStates(prev => ({
-          ...prev,
-          [connectedDevice.id]: 'disconnected',
-        }));
-        setConnectedDevice(null);
-      } catch (error) {
-        setError(
-          `Disconnect error: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+  // pair with device first before connecting to it
+  const connectToDevice = async (peripheral: any) => {
+    const updatedDevices = discoveredDevices.map(device =>
+      device.id === peripheral.id ? {...device, connectLoading: true} : device,
+    );
+    setDiscoveredDevices(updatedDevices);
+
+    await BleManager.createBond(peripheral.id)
+      .then(() => {
+        const updatedDevices = discoveredDevices.map(device =>
+          device.id === peripheral.id
+            ? {...device, connected: true, connectLoading: false}
+            : device,
         );
-      }
-    }
+        setDiscoveredDevices(updatedDevices);
+        console.log('BLE device paired successfully');
+      })
+      .catch(() => {
+        console.log('failed to bond');
+        const updatedDevices = discoveredDevices.map(device =>
+          device.id === peripheral.id
+            ? {...device, connectLoading: false}
+            : device,
+        );
+        setDiscoveredDevices(updatedDevices);
+        setError(
+          `The device failed to connect with error ${JSON.stringify(
+            peripheral,
+          )}`,
+        );
+      });
+  };
+
+  // disconnect from device
+  const disconnectDevice = async (peripheral: any) => {
+    const updatedDevices = discoveredDevices.map(device =>
+      device.id === peripheral.id ? {...device, connectLoading: true} : device,
+    );
+    setDiscoveredDevices(updatedDevices);
+
+    await BleManager.removeBond(peripheral.id)
+      .then(() => {
+        const updatedDevices = discoveredDevices.map(device =>
+          device.id === peripheral.id
+            ? {...device, connected: false, connectLoading: false}
+            : device,
+        );
+        setDiscoveredDevices(updatedDevices);
+      })
+      .catch(() => {
+        console.log('fail to remove the bond');
+        const updatedDevices = discoveredDevices.map(device =>
+          device.id === peripheral.id
+            ? {...device, connectLoading: false}
+            : device,
+        );
+        setDiscoveredDevices(updatedDevices);
+        setError('The device failed to remove the connection');
+      });
   };
 
   return {
     isScanning,
-    devices,
-    connectedDevice,
-    deviceConnectionStates,
+    devices: discoveredDevices,
     startScan,
     connectToDevice,
     disconnectDevice,
