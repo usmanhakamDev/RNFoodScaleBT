@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import Header from './components/Header';
 import DeviceItem from './components/DeviceItem';
-import ConnectedDeviceBar from './components/ConnectedDeviceBar';
 import {useBleManager} from './hooks/useBleManager';
 import {NativeWindStyleSheet} from 'nativewind';
 
@@ -19,15 +18,8 @@ NativeWindStyleSheet.setOutput({
 
 const App = () => {
   const [error, setError] = useState<string | null>(null);
-  const {
-    isScanning,
-    devices,
-    connectedDevice,
-    startScan,
-    connectToDevice,
-    disconnectDevice,
-    deviceConnectionStates,
-  } = useBleManager(setError);
+  const {isScanning, devices, startScan, connectToDevice, disconnectDevice} =
+    useBleManager(setError);
 
   useEffect(() => {
     if (error) {
@@ -71,23 +63,78 @@ const App = () => {
         renderItem={({item}) => (
           <DeviceItem
             device={item}
-            onPress={connectToDevice}
-            connectionState={deviceConnectionStates[item.id]}
+            connect={connectToDevice}
+            disconnect={disconnectDevice}
+            // connectionState={deviceConnectionStates[item.id]}
           />
         )}
         keyExtractor={item => item.id}
         contentContainerStyle={{padding: 16}}
         className="flex-1"
       />
-
-      {connectedDevice && (
-        <ConnectedDeviceBar
-          device={connectedDevice}
-          onDisconnect={disconnectDevice}
-        />
-      )}
     </SafeAreaView>
   );
 };
+
+// import {StatusBar, useColorScheme, TouchableOpacity} from 'react-native';
+// import {Colors} from 'react-native/Libraries/NewAppScreen';
+// import DeviceList from './DeviceList';
+// import {styles} from './styles/styles';
+
+// const App = () => {
+//   const isDarkMode = useColorScheme() === 'dark';
+//   const backgroundStyle = {
+//     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+//   };
+
+//   // render list of bluetooth devices
+//   return (
+//     <SafeAreaView style={[backgroundStyle, styles.container]}>
+//       <StatusBar
+//         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+//         backgroundColor={backgroundStyle.backgroundColor}
+//       />
+//       <View style={{pdadingHorizontal: 20}}>
+//         <Text
+//           style={[
+//             styles.title,
+//             {color: isDarkMode ? Colors.white : Colors.black},
+//           ]}>
+//           React Native BLE Manager Tutorial
+//         </Text>
+//         <TouchableOpacity
+//           activeOpacity={0.5}
+//           style={styles.scanButton}
+//           onPress={startScan}>
+//           <Text style={styles.scanButtonText}>
+//             {isScanning ? 'Scanning...' : 'Scan Bluetooth Devices'}
+//           </Text>
+//         </TouchableOpacity>
+//         <Text
+//           style={[
+//             styles.subtitle,
+//             {color: isDarkMode ? Colors.white : Colors.black},
+//           ]}>
+//           Discovered Devices:
+//         </Text>
+//         {discoveredDevices.length > 0 ? (
+//           <FlatList
+//             data={discoveredDevices}
+//             renderItem={({item}) => (
+//               <DeviceList
+//                 peripheral={item}
+//                 connect={connectToPeripheral}
+//                 disconnect={disconnectFromPeripheral}
+//               />
+//             )}
+//             keyExtractor={item => item.id}
+//           />
+//         ) : (
+//           <Text style={styles.noDevicesText}>No Bluetooth devices found</Text>
+//         )}
+//       </View>
+//     </SafeAreaView>
+//   );
+// };
 
 export default App;
