@@ -6,13 +6,14 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "node init && react-native start",
     "test": "jest"
   },
   "dependencies": {
     "nativewind": "^2.0.11",
     "react": "18.3.1",
     "react-native": "0.76.5",
+    "react-native-ble-manager": "^12.1.2",
     "react-native-ble-plx": "^3.2.1",
     "react-native-vector-icons": "^10.2.0"
   },
